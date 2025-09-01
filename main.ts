@@ -5,6 +5,7 @@ import moment from 'moment';
 interface KGHelperSettings {
     conceptTemplatePath: string;
     relationTemplatePath: string;
+    newNoteLocationMode: 'fixed' | 'current'; // 【新】笔记存放模式
     defaultFolder: string;
     parentKey: string;
     inheritanceMode: 'full' | 'structure';
@@ -14,7 +15,8 @@ interface KGHelperSettings {
 const DEFAULT_SETTINGS: KGHelperSettings = {
     conceptTemplatePath: '',
     relationTemplatePath: '',
-    defaultFolder: '/', 
+    newNoteLocationMode: 'current', // 【新】默认为“当前目录”模式
+    defaultFolder: '/',
     parentKey: 'parent',
     inheritanceMode: 'full',
 }
@@ -50,7 +52,6 @@ export default class KGHelperPlugin extends Plugin {
             editorCallback: () => this.inheritPropertiesFromParent()
         });
 
-        // 【新】命令4: 为关系笔记补全反向别名
         this.addCommand({
             id: 'add-reverse-alias',
             name: '为关系笔记补全反向别名',
@@ -58,7 +59,7 @@ export default class KGHelperPlugin extends Plugin {
         });
     }
 
-    onunload() {}
+    onunload() { }
 
     async loadSettings() {
         this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -70,9 +71,6 @@ export default class KGHelperPlugin extends Plugin {
 
     // --- 核心功能函数 ---
 
-    /**
-     * 【新】为当前的关系笔记补全结构化的反向别名
-     */
     async addReverseAliasForCurrentNote() {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
@@ -83,7 +81,7 @@ export default class KGHelperPlugin extends Plugin {
         try {
             const title = activeFile.basename;
             const parts = title.split('-');
-            
+
             if (parts.length !== 3) {
                 new Notice("这不是一个标准的关系笔记标题 (例如: a-关联-b)。");
                 return;
@@ -98,27 +96,21 @@ export default class KGHelperPlugin extends Plugin {
 
             const reverseAlias = `${conceptB}-${relation}-${conceptA}`;
 
-            const fileCache = this.app.metadataCache.getFileCache(activeFile);
-            const currentAliases = fileCache?.frontmatter?.aliases;
-
-            if (Array.isArray(currentAliases) && currentAliases.includes(reverseAlias)) {
-                new Notice("反向别名已存在。");
-                return;
-            }
-
             await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
                 let aliases = frontmatter.aliases;
                 if (!Array.isArray(aliases)) {
                     aliases = [];
                 }
-                // 再次检查以确保安全
+                if (aliases.includes(reverseAlias)) {
+                    new Notice("反向别名已存在。");
+                    return; // 通过返回来中断 processFrontMatter 的修改
+                }
                 if (!aliases.includes(reverseAlias)) {
                     aliases.push(reverseAlias);
                 }
                 frontmatter.aliases = aliases;
+                new Notice(`成功添加别名: "${reverseAlias}"`);
             });
-
-            new Notice(`成功添加别名: "${reverseAlias}"`);
 
         } catch (err) {
             console.error("KG Helper Plugin - 添加别名时出错:", err);
@@ -137,7 +129,7 @@ export default class KGHelperPlugin extends Plugin {
             const fileCache = this.app.metadataCache.getFileCache(activeFile);
             const currentFrontmatter = fileCache?.frontmatter || {};
             const parentKey = this.settings.parentKey.trim();
-            
+
             const parentLinksRaw = currentFrontmatter[parentKey];
             if (!parentLinksRaw) {
                 new Notice(`当前笔记没有找到 "${parentKey}" 属性。`);
@@ -207,8 +199,8 @@ export default class KGHelperPlugin extends Plugin {
     }
 
     async createOrLinkNote(noteType: 'concept' | 'relation') {
-        const templatePath = (noteType === 'concept' 
-            ? this.settings.conceptTemplatePath 
+        const templatePath = (noteType === 'concept'
+            ? this.settings.conceptTemplatePath
             : this.settings.relationTemplatePath).trim();
 
         if (!templatePath) {
@@ -224,7 +216,7 @@ export default class KGHelperPlugin extends Plugin {
             if (selection && editor && activeView?.file) {
                 const sanitizedTitle = this.sanitizeFileName(selection);
                 if (!sanitizedTitle) { new Notice("错误: 清理后的文件名为空"); return; }
-                
+
                 const files = this.app.vault.getMarkdownFiles();
                 const targetFile = this.findFile(sanitizedTitle, files);
                 let noteToOpen: TFile;
@@ -234,12 +226,20 @@ export default class KGHelperPlugin extends Plugin {
                 } else {
                     const templateContent = await this.getTemplateContent(templatePath);
                     if (templateContent === null) return;
-                    
+
                     const uid = moment().format("YYYYMMDDHHmmss");
                     const modifiedContent = this.getModifiedContent(templateContent, uid, noteType, sanitizedTitle);
-                    
-                    const currentFolder = this.app.fileManager.getNewFileParent(activeView.file.path).path;
-                    const newFilePath = `${currentFolder === '/' ? '' : currentFolder}/${sanitizedTitle}.md`;
+
+                    // 【更新】根据设置决定新笔记的存放位置
+                    let creationFolder: string;
+                    if (this.settings.newNoteLocationMode === 'fixed') {
+                        creationFolder = this.settings.defaultFolder.trim();
+                        if (creationFolder === '') creationFolder = '/';
+                    } else { // 'current' mode
+                        creationFolder = this.app.fileManager.getNewFileParent(activeView.file.path).path;
+                    }
+
+                    const newFilePath = `${creationFolder === '/' ? '' : creationFolder}/${sanitizedTitle}.md`;
                     noteToOpen = await this.app.vault.create(newFilePath, modifiedContent);
                 }
                 const linkText = noteToOpen.basename === selection ? `[[${noteToOpen.basename}]]` : `[[${noteToOpen.basename}|${selection}]]`;
@@ -255,8 +255,21 @@ export default class KGHelperPlugin extends Plugin {
             const modifiedContent = this.getModifiedContent(templateContent, uid, noteType);
             const noteTypeName = noteType === 'concept' ? '概念' : '关系';
             const newNoteName = `未命名${noteTypeName} ${moment().format("YYYY-MM-DD HHmmss")}`;
-            let folder = this.settings.defaultFolder.trim();
+            
+            // 【更新】根据设置决定新笔记的存放位置
+            let folder: string;
+            const activeFile = this.app.workspace.getActiveFile();
+            if (this.settings.newNoteLocationMode === 'fixed') {
+                folder = this.settings.defaultFolder.trim();
+            } else { // 'current' mode
+                if (activeFile) {
+                    folder = this.app.fileManager.getNewFileParent(activeFile.path).path;
+                } else {
+                    folder = '/'; // 没有当前文件时, 回退到根目录
+                }
+            }
             if (folder === '' || folder === '/') { folder = '/'; }
+            
             const newFilePath = `${folder === '/' ? '' : folder}/${newNoteName}.md`;
             const newFile = await this.app.vault.create(newFilePath.replace(/^\//, ''), modifiedContent);
             await this.app.workspace.getLeaf('tab').openFile(newFile);
@@ -293,7 +306,7 @@ export default class KGHelperPlugin extends Plugin {
         }
         return await this.app.vault.read(templateFile);
     }
-    
+
     parseWikilink(link: string): string | null {
         if (typeof link !== 'string') return null;
         const match = link.match(/\[\[([^|\]]+)/);
@@ -320,7 +333,7 @@ export default class KGHelperPlugin extends Plugin {
                 if (colonIndex > -1) {
                     const key = line.substring(0, colonIndex).trim();
                     let value: any = line.substring(colonIndex + 1).trim();
-                    
+
                     if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
                         const listStr = value.substring(1, value.length - 1).trim();
                         if (listStr) {
@@ -333,7 +346,7 @@ export default class KGHelperPlugin extends Plugin {
                 }
             });
         }
-        
+
         frontmatterObject['uid'] = uid;
         frontmatterObject['type'] = noteType;
 
@@ -380,7 +393,7 @@ export default class KGHelperPlugin extends Plugin {
         Object.keys(frontmatterObject).forEach(key => {
             if (!processedKeys.has(key)) {
                 const value = frontmatterObject[key];
-                 if (Array.isArray(value)) {
+                if (Array.isArray(value)) {
                     if (value.length === 0) {
                         newFmContent += `${key}: []\n`;
                     } else {
@@ -420,15 +433,30 @@ class KGHelperSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'KG Helper 插件设置' });
 
+        // 【新】为模板路径输入框创建自动补全的数据列表
+        const markdownFiles = this.app.vault.getMarkdownFiles();
+        const templatePathsDatalist = document.createElement('datalist');
+        templatePathsDatalist.id = 'kg-template-paths';
+        for (const file of markdownFiles) {
+            const option = document.createElement('option');
+            option.value = file.path;
+            templatePathsDatalist.appendChild(option);
+        }
+        containerEl.appendChild(templatePathsDatalist);
+
         new Setting(containerEl)
             .setName('概念模板文件路径')
-            .addText(text => text
-                .setPlaceholder('例如: templates/KG概念模板.md')
-                .setValue(this.plugin.settings.conceptTemplatePath)
-                .onChange(async (value) => {
-                    this.plugin.settings.conceptTemplatePath = value;
-                    await this.plugin.saveSettings();
-                }))
+            .addText(text => {
+                // 【新】关联 datalist 以实现自动补全
+                text.inputEl.setAttribute('list', 'kg-template-paths');
+                text
+                    .setPlaceholder('例如: templates/KG概念模板.md')
+                    .setValue(this.plugin.settings.conceptTemplatePath)
+                    .onChange(async (value) => {
+                        this.plugin.settings.conceptTemplatePath = value;
+                        await this.plugin.saveSettings();
+                    });
+            })
             .addButton(button => button
                 .setButtonText('创建默认模板')
                 .onClick(() => this.createDefaultTemplate('concept'))
@@ -436,20 +464,44 @@ class KGHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('关系模板文件路径')
-            .addText(text => text
-                .setPlaceholder('例如: templates/KG关系模板.md')
-                .setValue(this.plugin.settings.relationTemplatePath)
-                .onChange(async (value) => {
-                    this.plugin.settings.relationTemplatePath = value;
-                    await this.plugin.saveSettings();
-                }))
+            .addText(text => {
+                // 【新】关联 datalist 以实现自动补全
+                text.inputEl.setAttribute('list', 'kg-template-paths');
+                text
+                    .setPlaceholder('例如: templates/KG关系模板.md')
+                    .setValue(this.plugin.settings.relationTemplatePath)
+                    .onChange(async (value) => {
+                        this.plugin.settings.relationTemplatePath = value;
+                        await this.plugin.saveSettings();
+                    });
+            })
             .addButton(button => button
                 .setButtonText('创建默认模板')
                 .onClick(() => this.createDefaultTemplate('relation'))
             );
 
+        // 【新】存放位置设置
+        const defaultFolderSetting = new Setting(containerEl); // 创建一个容器以便控制其可见性
+        
         new Setting(containerEl)
-            .setName('新笔记默认存放文件夹')
+            .setName('新笔记存放位置')
+            .setDesc('选择通过“选中文本”或“无选择”方式创建新笔记时的默认存放位置。')
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('current', '在当前笔记同一目录存放')
+                    .addOption('fixed', '在用户指定目录存放')
+                    .setValue(this.plugin.settings.newNoteLocationMode)
+                    .onChange(async (value: 'current' | 'fixed') => {
+                        this.plugin.settings.newNoteLocationMode = value;
+                        await this.plugin.saveSettings();
+                        // 根据选择, 显示或隐藏下方的“指定目录”设置项
+                        defaultFolderSetting.settingEl.style.display = value === 'fixed' ? '' : 'none';
+                    });
+            });
+
+        defaultFolderSetting
+            .setName('指定目录路径')
+            .setDesc('当选择“在用户指定目录存放”时, 新笔记将存放在此。使用 "/" 代表根目录。')
             .addText(text => text
                 .setPlaceholder('例如: inbox 或 /')
                 .setValue(this.plugin.settings.defaultFolder)
@@ -457,7 +509,9 @@ class KGHelperSettingTab extends PluginSettingTab {
                     this.plugin.settings.defaultFolder = value;
                     await this.plugin.saveSettings();
                 }));
-        
+        // 根据初始值决定是否显示
+        defaultFolderSetting.settingEl.style.display = this.plugin.settings.newNoteLocationMode === 'fixed' ? '' : 'none';
+
         new Setting(containerEl)
             .setName('父概念关键词')
             .addText(text => text
@@ -467,11 +521,12 @@ class KGHelperSettingTab extends PluginSettingTab {
                     this.plugin.settings.parentKey = value;
                     await this.plugin.saveSettings();
                 }));
-        
+
         new Setting(containerEl)
             .setName('继承模式')
             .setDesc('选择从父笔记继承属性时的方式。')
             .addDropdown(dropdown => dropdown
+                // 【修正】使用您要求的准确名称
                 .addOption('full', '继承属性与值')
                 .addOption('structure', '仅继承属性')
                 .setValue(this.plugin.settings.inheritanceMode)
@@ -484,7 +539,7 @@ class KGHelperSettingTab extends PluginSettingTab {
     async createDefaultTemplate(noteType: 'concept' | 'relation') {
         const path = noteType === 'concept' ? DEFAULT_CONCEPT_TEMPLATE_PATH : DEFAULT_RELATION_TEMPLATE_PATH;
         const settingKey = noteType === 'concept' ? 'conceptTemplatePath' : 'relationTemplatePath';
-        
+
         try {
             const parentKey = this.plugin.settings.parentKey.trim() || 'parent';
             const dynamicTemplateContent = `---
@@ -514,7 +569,7 @@ publish: true
             await this.app.vault.create(path, dynamicTemplateContent);
             this.plugin.settings[settingKey] = path;
             await this.plugin.saveSettings();
-            this.display(); 
+            this.display();
             new Notice(`默认模板已成功创建于 ${path}`);
         } catch (e) {
             console.error("创建默认模板失败:", e);
