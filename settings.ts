@@ -46,7 +46,9 @@ export class KGHelperSettingTab extends PluginSettingTab {
         }
         containerEl.appendChild(folderPathsDatalist);
 
-        // --- 设置项 ---
+        // --- 基础设置 ---
+        containerEl.createEl('h3', { text: '基础设置' });
+
         new Setting(containerEl)
             .setName('概念模板文件路径')
             .addText(text => {
@@ -120,7 +122,9 @@ export class KGHelperSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        // 【新】自动创建概念笔记的开关
+        // --- 快捷创建设置 ---
+        containerEl.createEl('h3', { text: '快捷创建 (@@)' });
+
         new Setting(containerEl)
             .setName('自动创建不存在的概念笔记')
             .setDesc('开启后, 当使用快捷指令(例如 @@i;...)时, 如果头部或尾部的概念笔记不存在, 插件将自动为您创建它们。')
@@ -130,18 +134,96 @@ export class KGHelperSettingTab extends PluginSettingTab {
                     this.plugin.settings.autoCreateConcepts = value;
                     await this.plugin.saveSettings();
                 }));
+        
+        const autoLinkSetting = new Setting(containerEl)
+            .setName('自动在概念笔记中插入链接')
+            .setDesc('开启后, 当创建关系笔记时, 会自动在所涉及的概念笔记的指定章节下追加链接。')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoLinkOnCreation)
+                .onChange(async (value) => {
+                    this.plugin.settings.autoLinkOnCreation = value;
+                    await this.plugin.saveSettings();
+                    relationLinkConfigContainer.style.display = value ? '' : 'none';
+                }));
+        
+        const relationLinkConfigContainer = containerEl.createDiv();
+        relationLinkConfigContainer.style.display = this.plugin.settings.autoLinkOnCreation ? '' : 'none';
+        
+        // 【更新】为设置项添加更详细的描述
+        const descFragment = document.createDocumentFragment();
+        descFragment.append(
+            '当创建形如“概念A - 关系 - 概念B”的笔记时，插件会自动将这篇关系笔记的链接，分别插入到“概念A”和“概念B”笔记的指定章节末尾。',
+            descFragment.createEl('br'),
+            '左侧输入框对应“概念A”(关系发起方)，右侧输入框对应“概念B”(关系接收方)。'
+        );
+        new Setting(relationLinkConfigContainer)
+            .setDesc(descFragment);
+
+
+        const relationTypes = {
+            '影响': { headDesc: '影响发起方 (A)', tailDesc: '影响接收方 (B)' },
+            '对比': { headDesc: '对比方 (A)', tailDesc: '对比方 (B)' },
+            '关联': { headDesc: '关联方 (A)', tailDesc: '关联方 (B)' },
+            '应用': { headDesc: '应用技术 (A)', tailDesc: '应用领域 (B)' }
+        };
+
+        for (const type in relationTypes) {
+            const config = relationTypes[type as keyof typeof relationTypes];
+            new Setting(relationLinkConfigContainer)
+                .setName(`“${type}”关系`)
+                .addText(text => {
+                    text.setPlaceholder(config.headDesc)
+                        .setValue(this.plugin.settings.relationLinkConfigs[type]?.headSection || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.relationLinkConfigs[type].headSection = value;
+                            await this.plugin.saveSettings();
+                        });
+                })
+                .addText(text => {
+                    text.setPlaceholder(config.tailDesc)
+                        .setValue(this.plugin.settings.relationLinkConfigs[type]?.tailSection || '')
+                        .onChange(async (value) => {
+                            this.plugin.settings.relationLinkConfigs[type].tailSection = value;
+                            await this.plugin.saveSettings();
+                        });
+                });
+        }
     }
 
     async createDefaultTemplate(noteType: 'concept' | 'relation') {
-        const path = noteType === 'concept' ? DEFAULT_CONCEPT_TEMPLATE_PATH : DEFAULT_RELATION_TEMPLATE_PATH;
-        const settingKey = noteType === 'concept' ? 'conceptTemplatePath' : 'relationTemplatePath';
+        if (noteType === 'relation') {
+             // 关系模板保持不变
+            const path = DEFAULT_RELATION_TEMPLATE_PATH;
+            if (await this.app.vault.adapter.exists(path)) {
+                new Notice('默认关系模板已存在，操作取消。');
+                return;
+            }
+            await this.app.vault.create(path, `---
+uid: 
+aliases: []
+type: relation
+publish: true
+---
+
+`);
+            this.plugin.settings.relationTemplatePath = path;
+            await this.plugin.saveSettings();
+            this.display();
+            new Notice(`默认关系模板已成功创建于 ${path}`);
+            return;
+        }
+
+        // --- 更新概念模板 ---
+        const path = DEFAULT_CONCEPT_TEMPLATE_PATH;
+        const settingKey = 'conceptTemplatePath';
         
         try {
             const parentKey = this.plugin.settings.parentKey.trim() || 'parent';
+            // 【更新】使用新的五章节结构
             const dynamicTemplateContent = `---
 uid: 
 aliases: []
-type: 
+type: concept
 ${parentKey}:
 publish: true
 ---
@@ -152,6 +234,10 @@ publish: true
 
 # 对比
 
+# 影响因素
+
+# 影响
+
 # 应用
 `;
             const folder = 'templates';
@@ -159,14 +245,14 @@ publish: true
                 await this.app.vault.createFolder(folder);
             }
             if (await this.app.vault.adapter.exists(path)) {
-                new Notice('默认模板文件已存在, 操作取消。');
+                new Notice('默认概念模板文件已存在, 操作取消。');
                 return;
             }
             await this.app.vault.create(path, dynamicTemplateContent);
             this.plugin.settings[settingKey] = path;
             await this.plugin.saveSettings();
             this.display();
-            new Notice(`默认模板已成功创建于 ${path}`);
+            new Notice(`默认概念模板已成功创建于 ${path}`);
         } catch (e) {
             console.error("创建默认模板失败:", e);
             new Notice("创建模板失败, 请检查开发者控制台。");

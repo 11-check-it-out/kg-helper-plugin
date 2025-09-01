@@ -164,6 +164,7 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
         this.plugin.app,
         this.plugin.settings,
         parsed.title,
+        parsed.relation,
         parsed.head,
         parsed.tail
       );
@@ -234,7 +235,7 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
   }
 
   // 解析查询为标题与数组
-  parseQueryToParts(query: string): { title: string; head: string[]; tail: string[] } | null {
+  parseQueryToParts(query: string): { title: string; relation: string; head: string[]; tail: string[] } | null {
     const q = (query || '').trim();
     if (!q) return null;
 
@@ -256,6 +257,6 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
     const tailStr = tail.join('_');
     const title = tailStr ? `${headStr}-${rel}-${tailStr}` : `${headStr}-${rel}-`;
 
-    return { title, head, tail };
+    return { title, relation: rel, head, tail };
   }
 }
