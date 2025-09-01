@@ -3,7 +3,10 @@ import KGHelperPlugin from './main';
 import { createRelationNoteFromSuggester } from './commands/quickCreate';
 
 // =============================
-// @@i；概念a；概念b  →  《概念a-影响-概念b》
+// @@i；概念a，概念b；概念c  →  《概念a_概念b-影响-概念c》
+// - 头/尾概念内部可用 中文逗号/英文逗号/下划线 分隔，标题统一用下划线拼接
+// - 每个概念都可用候选逐个补全
+// - final 仅在头尾都非空时出现
 // =============================
 
 interface Suggestion {
@@ -30,6 +33,48 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
 
   onOpen(): void {
     this.allNotes = this.app.vault.getMarkdownFiles();
+
+    // --- 兜底绑定 Enter/Tab，确保在不同环境下回车/Tab 可用 ---
+    // Enter：严格调用 selectSuggestion
+    // @ts-ignore
+    this.scope.register([], 'Enter', (evt: KeyboardEvent) => {
+      evt.preventDefault();
+      // @ts-ignore
+      if (evt.stopPropagation) evt.stopPropagation();
+      // @ts-ignore
+      const chooser = this.suggestions?.chooser;
+      // @ts-ignore
+      const values: Suggestion[] | undefined = this.suggestions?.values;
+      // @ts-ignore
+      const sel: Suggestion | undefined = values && chooser ? values[chooser.selectedItem] : undefined;
+      if (sel) {
+        // 调用类方法（不要在这里直接写入编辑器，避免状态不同步）
+        this.selectSuggestion(sel, evt);
+      }
+    });
+
+    // Tab：非 final 走“快速应用+重触发”；final 走完整选择
+    // @ts-ignore
+    this.scope.register([], 'Tab', (evt: KeyboardEvent) => {
+      evt.preventDefault();
+      // @ts-ignore
+      if (evt.stopPropagation) evt.stopPropagation();
+      // @ts-ignore
+      const chooser = this.suggestions?.chooser;
+      // @ts-ignore
+      const values: Suggestion[] | undefined = this.suggestions?.values;
+      // @ts-ignore
+      const sel: Suggestion | undefined = values && chooser ? values[chooser.selectedItem] : undefined;
+      if (!sel) return;
+      if (sel.type === 'final') {
+        this.selectSuggestion(sel, evt);
+      } else {
+        this.applySuggestion(sel);
+        setTimeout(() => {
+          this.app.commands.executeCommandById('editor:trigger-suggest');
+        }, 30);
+      }
+    });
   }
 
   // 找到光标前最近一次出现的 @@
@@ -38,7 +83,7 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
     const atat = lineBefore.lastIndexOf('@@');
     if (atat === -1) return null;
 
-    const queryText = lineBefore.substring(atat + 2); // 不含 @@
+    const queryText = lineBefore.substring(atat + 2); // 不含 @@ 本身
     return {
       start: { line: cursor.line, ch: atat },
       end: cursor,
@@ -57,7 +102,7 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
 
     const out: Suggestion[] = [];
 
-    // 只有头尾都已填写时才显示 final
+    // 仅当头尾都填写时显示 final
     const parsed = this.parseQueryToParts(query);
     let canFinal = false;
     {
@@ -74,33 +119,27 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
       out.push({ type: 'final', label: `创建笔记: ${parsed.title}`, value: query });
     }
 
-    // 阶段1：选择关系类型（无分号时）
+    // 阶段1：关系类型（无分号）
     if (parts.length === 1 && query.indexOf('；') === -1 && query.indexOf(';') === -1) {
       const q = parts[0].trim().toLowerCase();
       let pairs = Object.entries(RELATION_TYPES);
-      if (q) {
-        pairs = pairs.filter(([abbr, name]) => abbr.indexOf(q) === 0 || name.indexOf(q) === 0);
-      }
+      if (q) pairs = pairs.filter(([abbr, name]) => abbr.indexOf(q) === 0 || name.indexOf(q) === 0);
       if (pairs.length === 0) pairs = Object.entries(RELATION_TYPES);
 
-      for (const [abbr, name] of pairs) {
-        out.push({ type: 'type', label: `${abbr}: ${name}`, value: `${abbr}；` });
-      }
+      for (const [abbr, name] of pairs) out.push({ type: 'type', label: `${abbr}: ${name}`, value: `${abbr}；` });
       return out;
     }
 
     // 阶段2/3：概念联想（头、尾）
     const lastPart = parts[parts.length - 1] || '';
-    const lastWord = (lastPart.split(/_/).pop() || '').trim();
+    const lastWord = (lastPart.split(/[_，,]/).pop() || '').trim();
 
     const pool = this.allNotes;
     const cand = lastWord
       ? pool.filter(f => f.basename.toLowerCase().includes(lastWord.toLowerCase())).slice(0, 10)
       : pool.slice(0, 10);
 
-    for (const f of cand) {
-      out.push({ type: 'concept', label: f.basename, value: f.basename });
-    }
+    for (const f of cand) out.push({ type: 'concept', label: f.basename, value: f.basename });
 
     return out;
   }
@@ -109,7 +148,14 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
     el.setText(s.label);
   }
 
-  async selectSuggestion(s: Suggestion, _evt: MouseEvent | KeyboardEvent): Promise<void> {
+  async selectSuggestion(s: Suggestion, evt: MouseEvent | KeyboardEvent): Promise<void> {
+    // 防止默认回车插入换行
+    if (evt && 'preventDefault' in evt) {
+      evt.preventDefault();
+      // @ts-ignore
+      if ((evt as any).stopPropagation) (evt as any).stopPropagation();
+    }
+
     if (s.type === 'final') {
       const parsed = this.parseQueryToParts(s.value);
       if (!parsed) return;
@@ -173,10 +219,11 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
       newQuery = s.value; // 例如 "i；"
     } else {
       const parts = query.split(/;|；/);
-      const lastPart = parts[parts.length - 1] || '';
-      const words = lastPart.split(/_/);
-      words[words.length - 1] = s.value; // 替换末尾关键词
-      parts[parts.length - 1] = words.join('_');
+      const idx = parts.length - 1;
+      const seg = parts[idx] || '';
+      // 仅替换片段中“最后一个概念词”，保留用户使用的分隔符（逗号/中文逗号/下划线）
+      const replaced = seg.replace(/[^_，,]*$/, s.value);
+      parts[idx] = replaced;
       newQuery = parts.join('；');
     }
 
@@ -201,8 +248,8 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
     const rest = q.substring(semi + 1);
     const segs = rest.split(/;|；/);
 
-    const head = (segs[0] || '').split(/_/).map(s => s.trim()).filter(Boolean);
-    const tail = (segs[1] || '').split(/_/).map(s => s.trim()).filter(Boolean);
+    const head = (segs[0] || '').split(/[_，,]/).map(s => s.trim()).filter(Boolean);
+    const tail = (segs[1] || '').split(/[_，,]/).map(s => s.trim()).filter(Boolean);
     if (head.length === 0) return null;
 
     const headStr = head.join('_');
