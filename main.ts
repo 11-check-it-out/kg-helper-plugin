@@ -4,26 +4,22 @@ import { KGHelperSettingTab } from './settings';
 import { createOrLinkNote } from './commands/createNote';
 import { inheritPropertiesFromParent } from './commands/inheritProperties';
 import { addReverseAliasForCurrentNote } from './commands/addAlias';
+import { RelationSuggester } from './suggester'; // 【新】导入建议器
 
 /**
  * 插件的主类, 作为程序的入口
- * 职责:
- * 1. 加载和保存设置
- * 2. 初始化设置页面
- * 3. 注册所有命令
  */
 export default class KGHelperPlugin extends Plugin {
     settings: KGHelperSettings;
 
     async onload() {
-        // 加载插件设置
         await this.loadSettings();
-
-        // 添加设置页面
         this.addSettingTab(new KGHelperSettingTab(this.app, this));
 
-        // --- 命令注册 ---
+        // 【新】注册我们的快捷输入建议器
+        this.registerEditorSuggest(new RelationSuggester(this));
 
+        // --- 命令注册 ---
         this.addCommand({
             id: 'smart-create-concept-note',
             name: '智能创建或链接概念笔记',

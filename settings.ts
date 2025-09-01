@@ -4,10 +4,6 @@ import { DEFAULT_CONCEPT_TEMPLATE_PATH, DEFAULT_RELATION_TEMPLATE_PATH } from '.
 
 /**
  * 插件的设置页面类
- * 职责:
- * 1. 渲染所有设置项 (输入框, 下拉菜单等)
- * 2. 处理用户与设置项的交互 (例如点击按钮)
- * 3. 保存用户的设置更改
  */
 export class KGHelperSettingTab extends PluginSettingTab {
     plugin: KGHelperPlugin;
@@ -22,7 +18,7 @@ export class KGHelperSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'KG Helper 插件设置' });
 
-        // --- 准备自动补全所需的数据 ---
+        // --- 自动补全所需的数据列表 ---
         const markdownFiles = this.app.vault.getMarkdownFiles();
         const templatePathsDatalist = document.createElement('datalist');
         templatePathsDatalist.id = 'kg-template-paths';
@@ -50,50 +46,37 @@ export class KGHelperSettingTab extends PluginSettingTab {
         }
         containerEl.appendChild(folderPathsDatalist);
 
-        // --- 渲染设置项 ---
-
+        // --- 设置项 ---
         new Setting(containerEl)
             .setName('概念模板文件路径')
             .addText(text => {
                 text.inputEl.setAttribute('list', 'kg-template-paths');
-                text
-                    .setPlaceholder('例如: templates/KG概念模板.md')
-                    .setValue(this.plugin.settings.conceptTemplatePath)
+                text.setPlaceholder('例如: templates/KG概念模板.md').setValue(this.plugin.settings.conceptTemplatePath)
                     .onChange(async (value) => {
                         this.plugin.settings.conceptTemplatePath = value;
                         await this.plugin.saveSettings();
                     });
             })
-            .addButton(button => button
-                .setButtonText('创建默认模板')
-                .onClick(() => this.createDefaultTemplate('concept'))
-            );
+            .addButton(button => button.setButtonText('创建默认模板').onClick(() => this.createDefaultTemplate('concept')));
 
         new Setting(containerEl)
             .setName('关系模板文件路径')
             .addText(text => {
                 text.inputEl.setAttribute('list', 'kg-template-paths');
-                text
-                    .setPlaceholder('例如: templates/KG关系模板.md')
-                    .setValue(this.plugin.settings.relationTemplatePath)
+                text.setPlaceholder('例如: templates/KG关系模板.md').setValue(this.plugin.settings.relationTemplatePath)
                     .onChange(async (value) => {
                         this.plugin.settings.relationTemplatePath = value;
                         await this.plugin.saveSettings();
                     });
             })
-            .addButton(button => button
-                .setButtonText('创建默认模板')
-                .onClick(() => this.createDefaultTemplate('relation'))
-            );
+            .addButton(button => button.setButtonText('创建默认模板').onClick(() => this.createDefaultTemplate('relation')));
 
         let defaultFolderSetting: Setting;
         new Setting(containerEl)
             .setName('新笔记存放位置')
             .setDesc('选择通过“选中文本”或“无选择”方式创建新笔记时的默认存放位置。')
             .addDropdown(dropdown => {
-                dropdown
-                    .addOption('current', '在当前笔记同一目录存放')
-                    .addOption('fixed', '在用户指定目录存放')
+                dropdown.addOption('current', '在当前笔记同一目录存放').addOption('fixed', '在用户指定目录存放')
                     .setValue(this.plugin.settings.newNoteLocationMode)
                     .onChange(async (value: 'current' | 'fixed') => {
                         this.plugin.settings.newNoteLocationMode = value;
@@ -109,9 +92,7 @@ export class KGHelperSettingTab extends PluginSettingTab {
             .setDesc('当选择“在用户指定目录存放”时, 新笔记将存放在此。使用 "/" 代表根目录。')
             .addText(text => {
                 text.inputEl.setAttribute('list', 'kg-folder-paths');
-                text
-                    .setPlaceholder('例如: inbox 或 /')
-                    .setValue(this.plugin.settings.defaultFolder)
+                text.setPlaceholder('例如: inbox 或 /').setValue(this.plugin.settings.defaultFolder)
                     .onChange(async (value) => {
                         this.plugin.settings.defaultFolder = value;
                         await this.plugin.saveSettings();
@@ -121,10 +102,8 @@ export class KGHelperSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('父概念属性名称')
-            .setDesc('在 frontmatter 中用于表示继承关系的属性名。注意：修改此处不会自动更新您现有的模板文件。')
-            .addText(text => text
-                .setPlaceholder('例如: parent 或 父概念')
-                .setValue(this.plugin.settings.parentKey)
+            .setDesc('修改此处不会自动更新您现有的模板文件。您可以通过“创建默认模板”按钮来生成使用新名称的模板。')
+            .addText(text => text.setPlaceholder('例如: parent 或 父概念').setValue(this.plugin.settings.parentKey)
                 .onChange(async (value) => {
                     this.plugin.settings.parentKey = value;
                     await this.plugin.saveSettings();
@@ -134,19 +113,25 @@ export class KGHelperSettingTab extends PluginSettingTab {
             .setName('继承模式')
             .setDesc('选择从父笔记继承属性时的方式。')
             .addDropdown(dropdown => dropdown
-                .addOption('full', '继承属性与值')
-                .addOption('structure', '仅继承属性')
+                .addOption('full', '继承属性与值').addOption('structure', '仅继承属性')
                 .setValue(this.plugin.settings.inheritanceMode)
                 .onChange(async (value: 'full' | 'structure') => {
                     this.plugin.settings.inheritanceMode = value;
                     await this.plugin.saveSettings();
                 }));
+
+        // 【新】自动创建概念笔记的开关
+        new Setting(containerEl)
+            .setName('自动创建不存在的概念笔记')
+            .setDesc('开启后, 当使用快捷指令(例如 @@i;...)时, 如果头部或尾部的概念笔记不存在, 插件将自动为您创建它们。')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.autoCreateConcepts)
+                .onChange(async (value) => {
+                    this.plugin.settings.autoCreateConcepts = value;
+                    await this.plugin.saveSettings();
+                }));
     }
 
-    /**
-     * "一键创建默认模板"按钮背后的逻辑
-     * @param noteType 'concept' 或 'relation'
-     */
     async createDefaultTemplate(noteType: 'concept' | 'relation') {
         const path = noteType === 'concept' ? DEFAULT_CONCEPT_TEMPLATE_PATH : DEFAULT_RELATION_TEMPLATE_PATH;
         const settingKey = noteType === 'concept' ? 'conceptTemplatePath' : 'relationTemplatePath';

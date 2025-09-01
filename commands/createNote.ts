@@ -3,38 +3,7 @@ import moment from 'moment';
 import { KGHelperSettings } from '../types';
 import { sanitizeFileName } from '../utils/stringUtils';
 import { getModifiedContent } from '../utils/frontmatterUtils';
-
-/**
- * 查找文件 (按名称或别名)
- */
-function findFile(sanitizedTitle: string, files: TFile[], app: App): TFile | null {
-    const lowerSanitizedTitle = sanitizedTitle.toLowerCase();
-    const fileByName = files.find(file => file.basename.toLowerCase() === lowerSanitizedTitle);
-    if (fileByName) return fileByName;
-
-    for (const file of files) {
-        const metadata = app.metadataCache.getFileCache(file);
-        const aliases = metadata?.frontmatter?.aliases;
-        if (aliases && Array.isArray(aliases)) {
-            if (aliases.some(alias => String(alias).toLowerCase() === lowerSanitizedTitle)) {
-                return file;
-            }
-        }
-    }
-    return null;
-}
-
-/**
- * 获取模板内容
- */
-async function getTemplateContent(templatePath: string, app: App): Promise<string | null> {
-    const templateFile = app.vault.getAbstractFileByPath(templatePath);
-    if (!(templateFile instanceof TFile)) {
-        new Notice(`错误: 模板文件未找到。\n路径是: "${templatePath}"`, 10000);
-        return null;
-    }
-    return await app.vault.read(templateFile);
-}
+import { findFile, getTemplateContent } from '../utils/fileUtils'; // 【更新】从新模块导入
 
 /**
  * "智能创建或链接笔记"命令的核心逻辑
@@ -57,8 +26,7 @@ export async function createOrLinkNote(app: App, settings: KGHelperSettings, not
             const sanitizedTitle = sanitizeFileName(selection);
             if (!sanitizedTitle) { new Notice("错误: 清理后的文件名为空"); return; }
 
-            const files = app.vault.getMarkdownFiles();
-            const targetFile = findFile(sanitizedTitle, files, app);
+            const targetFile = findFile(sanitizedTitle, app);
             let noteToOpen: TFile;
 
             if (targetFile) {
@@ -70,8 +38,15 @@ export async function createOrLinkNote(app: App, settings: KGHelperSettings, not
                 const uid = moment().format("YYYYMMDDHHmmss");
                 const modifiedContent = getModifiedContent(templateContent, settings, uid, noteType, sanitizedTitle);
                 
-                const currentFolder = activeView.file.parent.path;
-                const newFilePath = `${currentFolder === '/' ? '' : currentFolder}/${sanitizedTitle}.md`;
+                let creationFolder: string;
+                if (settings.newNoteLocationMode === 'fixed') {
+                    creationFolder = settings.defaultFolder.trim();
+                    if (creationFolder === '') creationFolder = '/';
+                } else {
+                    creationFolder = activeView.file.parent.path;
+                }
+
+                const newFilePath = `${creationFolder === '/' ? '' : creationFolder}/${sanitizedTitle}.md`;
                 noteToOpen = await app.vault.create(newFilePath, modifiedContent);
             }
             const linkText = noteToOpen.basename === selection ? `[[${noteToOpen.basename}]]` : `[[${noteToOpen.basename}|${selection}]]`;
