@@ -1,161 +1,177 @@
-import { Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile, App } from 'obsidian';
+import { Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile } from 'obsidian';
 import KGHelperPlugin from './main';
 import { createRelationNoteFromSuggester } from './commands/quickCreate';
 
-// 定义建议项的类型
+// =============================
+// @@i；概念a；概念b  →  《概念a-影响-概念b》
+// =============================
+
 interface Suggestion {
-    label: string;
-    value: string;
-    type: 'type' | 'concept' | 'final';
+  label: string;
+  value: string;
+  type: 'type' | 'concept' | 'final';
 }
 
-// 关系类型及其描述
-const RELATION_TYPES: Record<string, string> = { 'i': '影响', 'c': '对比', 'a': '关联', 'u': '应用' };
+const RELATION_TYPES: Record<string, string> = {
+  i: '影响',
+  c: '对比',
+  a: '关联',
+  u: '应用',
+};
 
 export class RelationSuggester extends EditorSuggest<Suggestion> {
-    plugin: KGHelperPlugin;
-    private allNotes: TFile[];
+  plugin: KGHelperPlugin;
+  private allNotes: TFile[] = [];
 
-    constructor(plugin: KGHelperPlugin) {
-        super(plugin.app);
-        this.plugin = plugin;
+  constructor(plugin: KGHelperPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    this.allNotes = this.app.vault.getMarkdownFiles();
+  }
+
+  // 找到光标前最近一次出现的 @@
+  onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
+    const lineBefore = editor.getLine(cursor.line).substring(0, cursor.ch);
+    const atat = lineBefore.lastIndexOf('@@');
+    if (atat === -1) return null;
+
+    const queryText = lineBefore.substring(atat + 2); // 不含 @@
+    return {
+      start: { line: cursor.line, ch: atat },
+      end: cursor,
+      query: queryText,
+    };
+  }
+
+  // 生成候选项
+  getSuggestions(context: EditorSuggestContext): Suggestion[] {
+    if (!this.allNotes || this.allNotes.length === 0) {
+      this.allNotes = this.app.vault.getMarkdownFiles();
     }
 
-    onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
-        // 更新笔记缓存, 确保获取最新列表
-        this.allNotes = this.app.vault.getMarkdownFiles(); 
-        const line = editor.getLine(cursor.line).substring(0, cursor.ch);
-        const match = line.match(/(?:^|\s)(@@)(.*)/); // 匹配行首或空格后的 @@
-        
-        if (match) {
-            const triggerStr = match[1];
-            const query = match[2] || '';
-            const triggerStart = line.lastIndexOf(triggerStr);
-            
-            return {
-                start: { line: cursor.line, ch: triggerStart },
-                end: cursor,
-                query: query,
-            };
-        }
-        return null;
+    const query = (context.query || '').trim();
+    const parts = query.split(/;|；/);
+
+    const out: Suggestion[] = [];
+
+    // 若已可形成标题，追加 final 项
+    const parsed = this.parseQueryToParts(query);
+    if (parsed) {
+      out.push({ type: 'final', label: `创建笔记: ${parsed.title}`, value: query });
     }
 
-    getSuggestions(context: EditorSuggestContext): Suggestion[] {
-        const query = context.query;
-        const parts = query.split(/;|；/);
-        const lastPart = parts[parts.length - 1];
-        const lastWord = lastPart.split(/_/).pop()?.trim() || '';
+    // 阶段1：选择关系类型（无分号时）
+    if (parts.length === 1 && query.indexOf('；') === -1 && query.indexOf(';') === -1) {
+      const q = parts[0].trim().toLowerCase();
+      let pairs = Object.entries(RELATION_TYPES);
+      if (q) {
+        pairs = pairs.filter(([abbr, name]) => abbr.indexOf(q) === 0 || name.indexOf(q) === 0);
+      }
+      if (pairs.length === 0) pairs = Object.entries(RELATION_TYPES);
 
-        const suggestions: Suggestion[] = [];
-        const finalTitleParts = this.parseQueryToParts(query);
-
-        // 始终将“最终创建”选项放在第一位 (如果语法有效)
-        if (finalTitleParts) {
-            suggestions.push({
-                type: 'final',
-                label: `创建笔记: ${finalTitleParts.title}`,
-                value: query // 传递原始query, 以便在select时重新解析
-            });
-        }
-
-        // 上下文1: 输入关系类型
-        if (parts.length === 1 && !query.includes('；') && !query.includes(';')) {
-            const filteredTypes = Object.entries(RELATION_TYPES)
-                .filter(([abbr, name]) => abbr.startsWith(query.toLowerCase()) || name.startsWith(query));
-            
-            suggestions.push(...filteredTypes.map(([abbr, name]) => ({
-                type: 'type',
-                label: `${abbr}: ${name}`,
-                value: `${abbr}； `
-            })));
-        }
-        // 上下文2: 输入概念名称
-        else if (lastWord) {
-             const matchingNotes = this.allNotes
-                .filter(file => file.basename.toLowerCase().includes(lastWord.toLowerCase()))
-                .slice(0, 10);
-            
-            suggestions.push(...matchingNotes.map(file => ({
-                type: 'concept',
-                label: file.basename,
-                value: file.basename
-            })));
-        }
-        
-        return suggestions;
+      for (const [abbr, name] of pairs) {
+        out.push({ type: 'type', label: `${abbr}: ${name}`, value: `${abbr}；` });
+      }
+      return out;
     }
 
-    renderSuggestion(suggestion: Suggestion, el: HTMLElement): void {
-        el.setText(suggestion.label);
+    // 阶段2/3：概念联想（头、尾）
+    const lastPart = parts[parts.length - 1] || '';
+    const lastWord = (lastPart.split(/_/).pop() || '').trim();
+
+    const pool = this.allNotes;
+    const cand = lastWord
+      ? pool.filter(f => f.basename.toLowerCase().includes(lastWord.toLowerCase())).slice(0, 10)
+      : pool.slice(0, 10);
+
+    for (const f of cand) {
+      out.push({ type: 'concept', label: f.basename, value: f.basename });
     }
 
-    async selectSuggestion(suggestion: Suggestion, evt: MouseEvent | KeyboardEvent): Promise<void> {
-        const editor = this.context.editor;
-        const query = this.context.query;
-        
-        // 【核心交互】使用 Tab 键进行补全
-        if (evt.key === 'Tab') {
-            evt.preventDefault(); // 阻止默认的 Tab 行为
-            
-            if (suggestion.type === 'type' || suggestion.type === 'concept') {
-                let newQuery;
-                if (suggestion.type === 'type') {
-                    newQuery = suggestion.value;
-                } else {
-                    const parts = query.split(/;|；/);
-                    const lastPart = parts[parts.length - 1];
-                    const words = lastPart.split(/_/);
-                    words[words.length - 1] = suggestion.value; // 替换最后一个词
-                    parts[parts.length - 1] = words.join('_');
-                    newQuery = parts.join('；');
-                }
-                const newText = `@@${newQuery}`;
-                editor.replaceRange(newText, this.context.start, this.context.end);
-            }
-            return;
-        }
+    return out;
+  }
 
-        // 【核心交互】使用 Enter 键进行最终创建
-        if (evt.key === 'Enter') {
-            if (suggestion.type === 'final') {
-                const finalParts = this.parseQueryToParts(suggestion.value);
-                if (!finalParts) return;
+  renderSuggestion(s: Suggestion, el: HTMLElement): void {
+    el.setText(s.label);
+  }
 
-                const newFile = await createRelationNoteFromSuggester(this.plugin.app, this.plugin.settings, finalParts.title, finalParts.head, finalParts.tail);
-                if (newFile) {
-                    const linkText = `[[${newFile.basename}]]`;
-                    editor.replaceRange(linkText, this.context.start, this.context.end);
-                    this.app.workspace.getLeaf('tab').openFile(newFile);
-                }
-            }
-        }
+  async selectSuggestion(s: Suggestion, _evt: MouseEvent | KeyboardEvent): Promise<void> {
+    if (s.type === 'final') {
+      const parsed = this.parseQueryToParts(s.value);
+      if (!parsed) return;
+
+      const newFile = await createRelationNoteFromSuggester(
+        this.plugin.app,
+        this.plugin.settings,
+        parsed.title,
+        parsed.head,
+        parsed.tail
+      );
+
+      if (newFile) {
+        const linkText = `[[${newFile.basename}]]`;
+        this.context.editor.replaceRange(linkText, this.context.start, this.context.end);
+        this.app.workspace.getLeaf('tab').openFile(newFile);
+      }
+      return;
     }
 
-    // --- 辅助函数 ---
+    // 非 final：应用到 @@ 查询并再次触发联想
+    this.applySuggestion(s);
+    setTimeout(() => {
+      this.app.commands.executeCommandById('editor:trigger-suggest');
+    }, 40);
+  }
 
-    parseQueryToParts(query: string): { title: string; head: string[]; tail: string[] } | null {
-        const firstSemicolon = query.indexOf(';') !== -1 ? query.indexOf(';') : query.indexOf('；');
-        if (firstSemicolon === -1) return null;
+  // 将选择写回，并把光标置于 @@ 片段末尾
+  applySuggestion(s: Suggestion): void {
+    const editor = this.context.editor;
+    const query = this.context.query || '';
 
-        const typeAbbr = query.substring(0, firstSemicolon).trim().toLowerCase();
-        const relationType = RELATION_TYPES[typeAbbr];
-        if (!relationType) return null;
-
-        const rest = query.substring(firstSemicolon + 1);
-        const parts = rest.split(/;|；/);
-        
-        const headConcepts = (parts[0] || '').split(/_/).map(p => p.trim()).filter(Boolean);
-        const tailConcepts = (parts[1] || '').split(/_/).map(p => p.trim()).filter(Boolean);
-        
-        if (headConcepts.length === 0) return null;
-
-        const headStr = headConcepts.join('_');
-        const tailStr = tailConcepts.join('_');
-
-        const title = tailStr ? `${headStr}-${relationType}-${tailStr}` : `${headStr}-${relationType}-`;
-        
-        return { title, head: headConcepts, tail: tailConcepts };
+    let newQuery: string;
+    if (s.type === 'type') {
+      newQuery = s.value; // 例如 "i；"
+    } else {
+      const parts = query.split(/;|；/);
+      const lastPart = parts[parts.length - 1] || '';
+      const words = lastPart.split(/_/);
+      words[words.length - 1] = s.value; // 替换末尾关键词
+      parts[parts.length - 1] = words.join('_');
+      newQuery = parts.join('；');
     }
+
+    const start = this.context.start;
+    const text = `@@${newQuery}`;
+    editor.replaceRange(text, start, this.context.end);
+    editor.setCursor({ line: start.line, ch: start.ch + text.length });
+  }
+
+  // 解析查询为标题与数组
+  parseQueryToParts(query: string): { title: string; head: string[]; tail: string[] } | null {
+    const q = (query || '').trim();
+    if (!q) return null;
+
+    const semi = q.indexOf(';') !== -1 ? q.indexOf(';') : q.indexOf('；');
+    if (semi === -1) return null;
+
+    const typeAbbr = q.substring(0, semi).trim().toLowerCase();
+    const rel = RELATION_TYPES[typeAbbr];
+    if (!rel) return null;
+
+    const rest = q.substring(semi + 1);
+    const segs = rest.split(/;|；/);
+
+    const head = (segs[0] || '').split(/_/).map(s => s.trim()).filter(Boolean);
+    const tail = (segs[1] || '').split(/_/).map(s => s.trim()).filter(Boolean);
+    if (head.length === 0) return null;
+
+    const headStr = head.join('_');
+    const tailStr = tail.join('_');
+    const title = tailStr ? `${headStr}-${rel}-${tailStr}` : `${headStr}-${rel}-`;
+
+    return { title, head, tail };
+  }
 }
-
