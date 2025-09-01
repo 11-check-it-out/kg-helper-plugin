@@ -57,9 +57,20 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
 
     const out: Suggestion[] = [];
 
-    // 若已可形成标题，追加 final 项
+    // 只有头尾都已填写时才显示 final
     const parsed = this.parseQueryToParts(query);
-    if (parsed) {
+    let canFinal = false;
+    {
+      const firstSemi = query.indexOf(';') !== -1 ? query.indexOf(';') : query.indexOf('；');
+      if (firstSemi !== -1) {
+        const rest = query.substring(firstSemi + 1);
+        const segs = rest.split(/;|；/);
+        const headFilled = (segs[0] || '').trim().length > 0;
+        const tailFilled = (segs[1] || '').trim().length > 0;
+        canFinal = headFilled && tailFilled;
+      }
+    }
+    if (parsed && canFinal) {
       out.push({ type: 'final', label: `创建笔记: ${parsed.title}`, value: query });
     }
 
@@ -119,11 +130,37 @@ export class RelationSuggester extends EditorSuggest<Suggestion> {
       return;
     }
 
-    // 非 final：应用到 @@ 查询并再次触发联想
+    // 非 final：根据阶段分别处理
+    if (s.type === 'type') {
+      // 选择关系类型后，立即进入“头概念”联想
+      this.applySuggestion(s);
+      setTimeout(() => {
+        this.app.commands.executeCommandById('editor:trigger-suggest');
+      }, 30);
+      return;
+    }
+
+    // s.type === 'concept'
+    const q = this.context.query || '';
+    let editingTail = false;
+    const firstSemi = q.indexOf(';') !== -1 ? q.indexOf(';') : q.indexOf('；');
+    if (firstSemi !== -1) {
+      const rest = q.substring(firstSemi + 1);
+      const segs = rest.split(/;|；/);
+      editingTail = segs.length >= 2; // 有第二段即认为在编辑尾概念
+    }
+
     this.applySuggestion(s);
-    setTimeout(() => {
-      this.app.commands.executeCommandById('editor:trigger-suggest');
-    }, 40);
+
+    if (editingTail) {
+      // 尾概念阶段：继续打开候选（便于立即选择 final 或继续补尾概念）
+      setTimeout(() => {
+        this.app.commands.executeCommandById('editor:trigger-suggest');
+      }, 30);
+    } else {
+      // 头概念阶段：选中后先关闭候选，等待输入分号进入尾概念阶段
+      this.close();
+    }
   }
 
   // 将选择写回，并把光标置于 @@ 片段末尾
