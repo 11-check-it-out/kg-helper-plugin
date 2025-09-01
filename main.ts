@@ -431,6 +431,7 @@ class KGHelperSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'KG Helper 插件设置' });
 
+        // --- 模板文件路径自动补全 ---
         const markdownFiles = this.app.vault.getMarkdownFiles();
         const templatePathsDatalist = document.createElement('datalist');
         templatePathsDatalist.id = 'kg-template-paths';
@@ -440,6 +441,25 @@ class KGHelperSettingTab extends PluginSettingTab {
             templatePathsDatalist.appendChild(option);
         }
         containerEl.appendChild(templatePathsDatalist);
+
+        // 【新】文件夹路径自动补全
+        const folders = new Set<string>();
+        folders.add('/'); // 添加根目录
+        for (const file of this.app.vault.getFiles()) {
+            if (file.parent) {
+                folders.add(file.parent.path);
+            }
+        }
+        const folderPaths = Array.from(folders).sort();
+        const folderPathsDatalist = document.createElement('datalist');
+        folderPathsDatalist.id = 'kg-folder-paths';
+        for (const folderPath of folderPaths) {
+            const option = document.createElement('option');
+            option.value = folderPath;
+            folderPathsDatalist.appendChild(option);
+        }
+        containerEl.appendChild(folderPathsDatalist);
+
 
         new Setting(containerEl)
             .setName('概念模板文件路径')
@@ -475,7 +495,6 @@ class KGHelperSettingTab extends PluginSettingTab {
                 .onClick(() => this.createDefaultTemplate('relation'))
             );
 
-        // 【修复】调整设置项的创建顺序, 确保UI布局正确
         let defaultFolderSetting: Setting;
 
         new Setting(containerEl)
@@ -489,7 +508,6 @@ class KGHelperSettingTab extends PluginSettingTab {
                     .onChange(async (value: 'current' | 'fixed') => {
                         this.plugin.settings.newNoteLocationMode = value;
                         await this.plugin.saveSettings();
-                        // 确保在 defaultFolderSetting 存在时才操作
                         if (defaultFolderSetting) {
                             defaultFolderSetting.settingEl.style.display = value === 'fixed' ? '' : 'none';
                         }
@@ -499,13 +517,17 @@ class KGHelperSettingTab extends PluginSettingTab {
         defaultFolderSetting = new Setting(containerEl)
             .setName('指定目录路径')
             .setDesc('当选择“在用户指定目录存放”时, 新笔记将存放在此。使用 "/" 代表根目录。')
-            .addText(text => text
-                .setPlaceholder('例如: inbox 或 /')
-                .setValue(this.plugin.settings.defaultFolder)
-                .onChange(async (value) => {
-                    this.plugin.settings.defaultFolder = value;
-                    await this.plugin.saveSettings();
-                }));
+            .addText(text => {
+                // 【新】为指定目录路径添加自动补全
+                text.inputEl.setAttribute('list', 'kg-folder-paths');
+                text
+                    .setPlaceholder('例如: inbox 或 /')
+                    .setValue(this.plugin.settings.defaultFolder)
+                    .onChange(async (value) => {
+                        this.plugin.settings.defaultFolder = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
         
         defaultFolderSetting.settingEl.style.display = this.plugin.settings.newNoteLocationMode === 'fixed' ? '' : 'none';
 
