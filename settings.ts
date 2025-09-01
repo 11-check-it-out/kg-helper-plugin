@@ -120,7 +120,8 @@ export class KGHelperSettingTab extends PluginSettingTab {
         defaultFolderSetting.settingEl.style.display = this.plugin.settings.newNoteLocationMode === 'fixed' ? '' : 'none';
 
         new Setting(containerEl)
-            .setName('父概念属性名')
+            .setName('父概念属性名称')
+            .setDesc('在 frontmatter 中用于表示继承关系的属性名。注意：修改此处不会自动更新您现有的模板文件。')
             .addText(text => text
                 .setPlaceholder('例如: parent 或 父概念')
                 .setValue(this.plugin.settings.parentKey)
