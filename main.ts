@@ -213,6 +213,7 @@ export default class KGHelperPlugin extends Plugin {
             const editor = activeView?.editor;
             const selection = editor?.getSelection()?.trim();
 
+            // 场景1: 有选中文本, 在当前笔记中操作
             if (selection && editor && activeView?.file) {
                 const sanitizedTitle = this.sanitizeFileName(selection);
                 if (!sanitizedTitle) { new Notice("错误: 清理后的文件名为空"); return; }
@@ -230,15 +231,9 @@ export default class KGHelperPlugin extends Plugin {
                     const uid = moment().format("YYYYMMDDHHmmss");
                     const modifiedContent = this.getModifiedContent(templateContent, uid, noteType, sanitizedTitle);
 
-                    let creationFolder: string;
-                    if (this.settings.newNoteLocationMode === 'fixed') {
-                        creationFolder = this.settings.defaultFolder.trim();
-                        if (creationFolder === '') creationFolder = '/';
-                    } else {
-                        creationFolder = this.app.fileManager.getNewFileParent(activeView.file.path).path;
-                    }
-
-                    const newFilePath = `${creationFolder === '/' ? '' : creationFolder}/${sanitizedTitle}.md`;
+                    // 【修复】获取当前笔记的父文件夹路径
+                    const currentFolder = activeView.file.parent.path;
+                    const newFilePath = `${currentFolder === '/' ? '' : currentFolder}/${sanitizedTitle}.md`;
                     noteToOpen = await this.app.vault.create(newFilePath, modifiedContent);
                 }
                 const linkText = noteToOpen.basename === selection ? `[[${noteToOpen.basename}]]` : `[[${noteToOpen.basename}|${selection}]]`;
@@ -247,6 +242,7 @@ export default class KGHelperPlugin extends Plugin {
                 return;
             }
 
+            // 场景2: 无选中文本, 创建一篇全新的笔记
             const templateContent = await this.getTemplateContent(templatePath);
             if (templateContent === null) return;
 
@@ -257,12 +253,15 @@ export default class KGHelperPlugin extends Plugin {
             
             let folder: string;
             const activeFile = this.app.workspace.getActiveFile();
+            // 【修复】根据设置和当前状态决定文件夹
             if (this.settings.newNoteLocationMode === 'fixed') {
                 folder = this.settings.defaultFolder.trim();
-            } else {
-                if (activeFile) {
-                    folder = this.app.fileManager.getNewFileParent(activeFile.path).path;
+            } else { // 'current' mode
+                // 只有当存在一个已打开的笔记时, 才使用它的目录
+                if (activeFile && activeFile.parent) {
+                    folder = activeFile.parent.path;
                 } else {
+                    // 否则 (例如在空白标签页), 回退到根目录
                     folder = '/';
                 }
             }
@@ -442,7 +441,7 @@ class KGHelperSettingTab extends PluginSettingTab {
         }
         containerEl.appendChild(templatePathsDatalist);
 
-        // 【新】文件夹路径自动补全
+        // 文件夹路径自动补全
         const folders = new Set<string>();
         folders.add('/'); // 添加根目录
         for (const file of this.app.vault.getFiles()) {
@@ -518,7 +517,6 @@ class KGHelperSettingTab extends PluginSettingTab {
             .setName('指定目录路径')
             .setDesc('当选择“在用户指定目录存放”时, 新笔记将存放在此。使用 "/" 代表根目录。')
             .addText(text => {
-                // 【新】为指定目录路径添加自动补全
                 text.inputEl.setAttribute('list', 'kg-folder-paths');
                 text
                     .setPlaceholder('例如: inbox 或 /')
