@@ -5,7 +5,7 @@ import moment from 'moment';
 interface KGHelperSettings {
     conceptTemplatePath: string;
     relationTemplatePath: string;
-    newNoteLocationMode: 'fixed' | 'current'; // 【新】笔记存放模式
+    newNoteLocationMode: 'fixed' | 'current';
     defaultFolder: string;
     parentKey: string;
     inheritanceMode: 'full' | 'structure';
@@ -15,7 +15,7 @@ interface KGHelperSettings {
 const DEFAULT_SETTINGS: KGHelperSettings = {
     conceptTemplatePath: '',
     relationTemplatePath: '',
-    newNoteLocationMode: 'current', // 【新】默认为“当前目录”模式
+    newNoteLocationMode: 'current',
     defaultFolder: '/',
     parentKey: 'parent',
     inheritanceMode: 'full',
@@ -230,12 +230,11 @@ export default class KGHelperPlugin extends Plugin {
                     const uid = moment().format("YYYYMMDDHHmmss");
                     const modifiedContent = this.getModifiedContent(templateContent, uid, noteType, sanitizedTitle);
 
-                    // 【更新】根据设置决定新笔记的存放位置
                     let creationFolder: string;
                     if (this.settings.newNoteLocationMode === 'fixed') {
                         creationFolder = this.settings.defaultFolder.trim();
                         if (creationFolder === '') creationFolder = '/';
-                    } else { // 'current' mode
+                    } else {
                         creationFolder = this.app.fileManager.getNewFileParent(activeView.file.path).path;
                     }
 
@@ -256,16 +255,15 @@ export default class KGHelperPlugin extends Plugin {
             const noteTypeName = noteType === 'concept' ? '概念' : '关系';
             const newNoteName = `未命名${noteTypeName} ${moment().format("YYYY-MM-DD HHmmss")}`;
             
-            // 【更新】根据设置决定新笔记的存放位置
             let folder: string;
             const activeFile = this.app.workspace.getActiveFile();
             if (this.settings.newNoteLocationMode === 'fixed') {
                 folder = this.settings.defaultFolder.trim();
-            } else { // 'current' mode
+            } else {
                 if (activeFile) {
                     folder = this.app.fileManager.getNewFileParent(activeFile.path).path;
                 } else {
-                    folder = '/'; // 没有当前文件时, 回退到根目录
+                    folder = '/';
                 }
             }
             if (folder === '' || folder === '/') { folder = '/'; }
@@ -433,7 +431,6 @@ class KGHelperSettingTab extends PluginSettingTab {
         containerEl.empty();
         containerEl.createEl('h2', { text: 'KG Helper 插件设置' });
 
-        // 【新】为模板路径输入框创建自动补全的数据列表
         const markdownFiles = this.app.vault.getMarkdownFiles();
         const templatePathsDatalist = document.createElement('datalist');
         templatePathsDatalist.id = 'kg-template-paths';
@@ -447,7 +444,6 @@ class KGHelperSettingTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName('概念模板文件路径')
             .addText(text => {
-                // 【新】关联 datalist 以实现自动补全
                 text.inputEl.setAttribute('list', 'kg-template-paths');
                 text
                     .setPlaceholder('例如: templates/KG概念模板.md')
@@ -465,7 +461,6 @@ class KGHelperSettingTab extends PluginSettingTab {
         new Setting(containerEl)
             .setName('关系模板文件路径')
             .addText(text => {
-                // 【新】关联 datalist 以实现自动补全
                 text.inputEl.setAttribute('list', 'kg-template-paths');
                 text
                     .setPlaceholder('例如: templates/KG关系模板.md')
@@ -480,9 +475,9 @@ class KGHelperSettingTab extends PluginSettingTab {
                 .onClick(() => this.createDefaultTemplate('relation'))
             );
 
-        // 【新】存放位置设置
-        const defaultFolderSetting = new Setting(containerEl); // 创建一个容器以便控制其可见性
-        
+        // 【修复】调整设置项的创建顺序, 确保UI布局正确
+        let defaultFolderSetting: Setting;
+
         new Setting(containerEl)
             .setName('新笔记存放位置')
             .setDesc('选择通过“选中文本”或“无选择”方式创建新笔记时的默认存放位置。')
@@ -494,12 +489,14 @@ class KGHelperSettingTab extends PluginSettingTab {
                     .onChange(async (value: 'current' | 'fixed') => {
                         this.plugin.settings.newNoteLocationMode = value;
                         await this.plugin.saveSettings();
-                        // 根据选择, 显示或隐藏下方的“指定目录”设置项
-                        defaultFolderSetting.settingEl.style.display = value === 'fixed' ? '' : 'none';
+                        // 确保在 defaultFolderSetting 存在时才操作
+                        if (defaultFolderSetting) {
+                            defaultFolderSetting.settingEl.style.display = value === 'fixed' ? '' : 'none';
+                        }
                     });
             });
 
-        defaultFolderSetting
+        defaultFolderSetting = new Setting(containerEl)
             .setName('指定目录路径')
             .setDesc('当选择“在用户指定目录存放”时, 新笔记将存放在此。使用 "/" 代表根目录。')
             .addText(text => text
@@ -509,7 +506,7 @@ class KGHelperSettingTab extends PluginSettingTab {
                     this.plugin.settings.defaultFolder = value;
                     await this.plugin.saveSettings();
                 }));
-        // 根据初始值决定是否显示
+        
         defaultFolderSetting.settingEl.style.display = this.plugin.settings.newNoteLocationMode === 'fixed' ? '' : 'none';
 
         new Setting(containerEl)
@@ -526,7 +523,6 @@ class KGHelperSettingTab extends PluginSettingTab {
             .setName('继承模式')
             .setDesc('选择从父笔记继承属性时的方式。')
             .addDropdown(dropdown => dropdown
-                // 【修正】使用您要求的准确名称
                 .addOption('full', '继承属性与值')
                 .addOption('structure', '仅继承属性')
                 .setValue(this.plugin.settings.inheritanceMode)
