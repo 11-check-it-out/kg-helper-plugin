@@ -23,24 +23,28 @@ export default class KGHelperPlugin extends Plugin {
         this.addCommand({
             id: 'smart-create-concept-note',
             name: '智能创建或链接概念笔记',
+            hotkeys: [{ modifiers: ["Alt"], key: "c" }],
             callback: () => createOrLinkNote(this.app, this.settings, 'concept')
         });
 
         this.addCommand({
             id: 'smart-create-relation-note',
             name: '智能创建或链接关系笔记',
+            hotkeys: [{ modifiers: ["Alt"], key: "r" }],
             callback: () => createOrLinkNote(this.app, this.settings, 'relation')
         });
 
         this.addCommand({
             id: 'inherit-properties-from-parent',
             name: '从父笔记继承属性',
+            hotkeys: [{ modifiers: ["Alt"], key: "i" }],
             editorCallback: () => inheritPropertiesFromParent(this.app, this.settings)
         });
 
         this.addCommand({
             id: 'add-reverse-alias',
             name: '为关系笔记补全反向别名',
+            hotkeys: [{ modifiers: ["Alt"], key: "a" }],
             editorCallback: () => addReverseAliasForCurrentNote(this.app)
         });
     }
