@@ -1,6 +1,6 @@
 import { App, Notice, TFile } from 'obsidian';
 import moment from 'moment';
-import { KGHelperSettings } from '../types';
+import { TWPilotSettings } from '../types';
 import { getModifiedContent } from '../utils/frontmatterUtils';
 import { getTemplateContent, findFile } from '../utils/fileUtils';
 import { sanitizeFileName } from '../utils/stringUtils';
@@ -11,7 +11,7 @@ import { insertLinkUnderHeading } from '../utils/fileModificationUtils';
  */
 async function autoCreateConceptNotes(
     app: App,
-    settings: KGHelperSettings,
+    settings: TWPilotSettings,
     conceptNames: string[]
 ): Promise<void> {
     const templatePath = settings.conceptTemplatePath.trim();
@@ -49,7 +49,7 @@ async function autoCreateConceptNotes(
  */
 async function autoInsertRelationLink(
     app: App,
-    settings: KGHelperSettings,
+    settings: TWPilotSettings,
     relationFile: TFile,
     relationType: string,
     headConcepts: string[],
@@ -59,7 +59,7 @@ async function autoInsertRelationLink(
     const config = settings.relationLinkConfigs[relationType];
     
     if (!config) {
-        console.warn(`KG Helper: 未找到关系类型 "${relationType}" 的链接配置。`);
+        console.warn(`ThoughtWeaver Pilot: 未找到关系类型 "${relationType}" 的链接配置。`);
         return;
     }
 
@@ -86,7 +86,7 @@ async function autoInsertRelationLink(
  */
 export async function createRelationNoteFromSuggester(
     app: App,
-    settings: KGHelperSettings,
+    settings: TWPilotSettings,
     title: string,
     relationType: string,
     headConcepts: string[],
@@ -100,7 +100,7 @@ export async function createRelationNoteFromSuggester(
     
     const templatePath = settings.relationTemplatePath.trim();
     if (!templatePath) {
-        new Notice("请先在 KG Helper 插件设置中指定“关系模板文件路径”!");
+        new Notice("请先在 ThoughtWeaver Pilot 插件设置中指定“关系模板文件路径”!");
         return null;
     }
 

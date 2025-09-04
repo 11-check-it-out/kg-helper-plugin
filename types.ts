@@ -9,7 +9,7 @@ export interface RelationLinkConfig {
 /**
  * 插件设置的接口, 描述了所有可配置的选项
  */
- export interface KGHelperSettings {
+ export interface TWPilotSettings {
     conceptTemplatePath: string;
     relationTemplatePath: string;
     newNoteLocationMode: 'fixed' | 'current';
@@ -24,7 +24,7 @@ export interface RelationLinkConfig {
 /**
  * 默认设置, 当用户第一次安装插件时使用
  */
-export const DEFAULT_SETTINGS: KGHelperSettings = {
+export const DEFAULT_SETTINGS: TWPilotSettings = {
     conceptTemplatePath: '',
     relationTemplatePath: '',
     newNoteLocationMode: 'current',

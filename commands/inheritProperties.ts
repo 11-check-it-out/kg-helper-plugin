@@ -1,11 +1,11 @@
 import { App, Notice } from 'obsidian';
-import { KGHelperSettings } from '../types';
+import { TWPilotSettings } from '../types';
 import { parseWikilink } from '../utils/stringUtils';
 
 /**
  * "从父笔记继承属性"命令的核心逻辑
  */
-export async function inheritPropertiesFromParent(app: App, settings: KGHelperSettings) {
+export async function inheritPropertiesFromParent(app: App, settings: TWPilotSettings) {
     const activeFile = app.workspace.getActiveFile();
     if (!activeFile) {
         new Notice("请先打开一个笔记文件。");
@@ -66,7 +66,7 @@ export async function inheritPropertiesFromParent(app: App, settings: KGHelperSe
             new Notice("没有需要继承的新属性。");
         }
     } catch (err) {
-        console.error("KG Helper Plugin - 继承属性时出错:", err);
+        console.error("ThoughtWeaver Pilot Plugin - 继承属性时出错:", err);
         new Notice("发生未知错误, 请检查开发者控制台。");
     }
 }

@@ -1,14 +1,14 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
-import KGHelperPlugin from './main';
+import TWPilotPlugin from './main';
 import { DEFAULT_CONCEPT_TEMPLATE_PATH, DEFAULT_RELATION_TEMPLATE_PATH } from './types';
 
 /**
  * 插件的设置页面类
  */
-export class KGHelperSettingTab extends PluginSettingTab {
-    plugin: KGHelperPlugin;
+export class TWPilotSettingTab extends PluginSettingTab {
+    plugin: TWPilotPlugin;
 
-    constructor(app: App, plugin: KGHelperPlugin) {
+    constructor(app: App, plugin: TWPilotPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
@@ -16,7 +16,7 @@ export class KGHelperSettingTab extends PluginSettingTab {
     display(): void {
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: 'KG Helper 插件设置' });
+        containerEl.createEl('h2', { text: 'ThoughtWeaver Pilot 插件设置' });
 
         // --- 自动补全所需的数据列表 ---
         const markdownFiles = this.app.vault.getMarkdownFiles();

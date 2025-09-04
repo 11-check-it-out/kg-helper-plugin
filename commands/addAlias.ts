@@ -45,7 +45,7 @@ export async function addReverseAliasForCurrentNote(app: App) {
         });
 
     } catch (err) {
-        console.error("KG Helper Plugin - 添加别名时出错:", err);
+        console.error("ThoughtWeaver Pilot Plugin - 添加别名时出错:", err);
         new Notice("发生未知错误, 请检查开发者控制台。");
     }
 }

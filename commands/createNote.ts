@@ -1,6 +1,6 @@
 import { App, Notice, TFile, MarkdownView } from 'obsidian';
 import moment from 'moment';
-import { KGHelperSettings } from '../types';
+import { TWPilotSettings } from '../types';
 import { sanitizeFileName } from '../utils/stringUtils';
 import { getModifiedContent } from '../utils/frontmatterUtils';
 import { findFile, getTemplateContent } from '../utils/fileUtils'; // 【更新】从新模块导入
@@ -8,7 +8,7 @@ import { findFile, getTemplateContent } from '../utils/fileUtils'; // 【更新�
 /**
  * "智能创建或链接笔记"命令的核心逻辑
  */
-export async function createOrLinkNote(app: App, settings: KGHelperSettings, noteType: 'concept' | 'relation') {
+export async function createOrLinkNote(app: App, settings: TWPilotSettings, noteType: 'concept' | 'relation') {
     const templatePath = (noteType === 'concept' ? settings.conceptTemplatePath : settings.relationTemplatePath).trim();
 
     if (!templatePath) {
@@ -77,7 +77,7 @@ export async function createOrLinkNote(app: App, settings: KGHelperSettings, not
         const newFile = await app.vault.create(newFilePath.replace(/^\//, ''), modifiedContent);
         await app.workspace.getLeaf('tab').openFile(newFile);
     } catch (err) {
-        console.error("KG Helper Plugin - Error:", err);
+        console.error("ThoughtWeaver Pilot Plugin - Error:", err);
         new Notice("发生未知错误, 请检查开发者控制台 (Ctrl+Shift+I)。");
     }
 }

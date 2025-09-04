@@ -1,5 +1,5 @@
 import { Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile } from 'obsidian';
-import KGHelperPlugin from './main';
+import TWPilotPlugin from './main';
 import { createRelationNoteFromSuggester } from './commands/quickCreate';
 
 // =============================
@@ -23,10 +23,10 @@ const RELATION_TYPES: Record<string, string> = {
 };
 
 export class RelationSuggester extends EditorSuggest<Suggestion> {
-  plugin: KGHelperPlugin;
+  plugin: TWPilotPlugin;
   private allNotes: TFile[] = [];
 
-  constructor(plugin: KGHelperPlugin) {
+  constructor(plugin: TWPilotPlugin) {
     super(plugin.app);
     this.plugin = plugin;
   }

@@ -1,4 +1,4 @@
-import { KGHelperSettings } from "../types";
+import { TWPilotSettings } from "../types";
 
 /**
  * 根据模板和动态数据, 生成最终用于创建新笔记的内容
@@ -11,7 +11,7 @@ import { KGHelperSettings } from "../types";
  */
 export function getModifiedContent(
     templateContent: string,
-    settings: KGHelperSettings,
+    settings: TWPilotSettings,
     uid: string,
     noteType: 'concept' | 'relation',
     title?: string

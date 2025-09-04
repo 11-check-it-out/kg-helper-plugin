@@ -1,7 +1,7 @@
 import { App, Notice, Plugin, TFile } from 'obsidian';
 import moment from 'moment';
-import { KGHelperSettings, DEFAULT_SETTINGS } from './types';
-import { KGHelperSettingTab } from './settings';
+import { TWPilotSettings, DEFAULT_SETTINGS } from './types';
+import { TWPilotSettingTab } from './settings';
 import { createOrLinkNote } from './commands/createNote';
 import { inheritPropertiesFromParent } from './commands/inheritProperties';
 import { addReverseAliasForCurrentNote } from './commands/addAlias';
@@ -12,12 +12,12 @@ import { getModifiedContent } from './utils/frontmatterUtils';
 /**
  * 插件的主类, 作为程序的入口
  */
-export default class KGHelperPlugin extends Plugin {
-    settings: KGHelperSettings;
+export default class TWPilotPlugin extends Plugin {
+    settings: TWPilotSettings;
 
     async onload() {
         await this.loadSettings();
-        this.addSettingTab(new KGHelperSettingTab(this.app, this));
+        this.addSettingTab(new TWPilotSettingTab(this.app, this));
 
         this.registerEditorSuggest(new RelationSuggester(this));
 
@@ -103,10 +103,10 @@ export default class KGHelperPlugin extends Plugin {
             );
 
             await this.app.vault.modify(file, newContent);
-            new Notice(`KG Helper: 已自动为 "${file.basename}" 应用模板`);
+            new Notice(`ThoughtWeaver Pilot: 已自动为 "${file.basename}" 应用模板`);
         } catch (err) {
-            console.error("KG Helper - 自动应用模板时出错:", err);
-            new Notice("KG Helper: 自动应用模板失败，请检查开发者控制台。");
+            console.error("ThoughtWeaver Pilot - 自动应用模板时出错:", err);
+            new Notice("ThoughtWeaver Pilot: 自动应用模板失败，请检查开发者控制台。");
         }
     }
 
