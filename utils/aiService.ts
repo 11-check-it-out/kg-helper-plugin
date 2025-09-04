@@ -6,11 +6,32 @@ export interface TitleSuggestion {
     reasoning: string;
 }
 
+// 定义一个通用的、优化后的系统提示词
+const systemPrompt = `你是一名专业的知识管理分析师，擅长为笔记进行主题标引和命名。你的任务是分析用户提供的笔记内容，并为其生成一个结构化、精确的标题。
+
+请严格遵循以下步骤：
+1.  **分析笔记类型**：首先，判断这篇笔记的核心目的是什么。
+    * **概念笔记 (Concept Note)**：如果笔记主要是在定义、描述或聚合关于 **一个核心主题** 的信息，则判定为“概念笔记”。
+    * **关系笔记 (Relation Note)**：如果笔记主要是在探讨 **两个或多个核心主题** 之间的互动、比较或因果，则判定为“关系笔记”。
+
+2.  **遵循命名原则生成标题**：
+    * 对于 **“概念笔记”**，标题必须遵循图书馆学“叙词”的原则：
+        * **必须是名词短语**：标题的核心必须是一个名词。
+        * **避免介词结构**：禁止使用“的”字结构。将“A的B”转换为“AB”或“B（A）”的形式。例如，一篇关于“父母的心理控制”的笔记，正确的标题是“父母心理控制”，而不是“父母的心理控制”。一篇关于“钢铁的属性”的笔记，正确的标题是“钢铁属性”。
+    * 对于 **“关系笔记”**，标题必须严格遵循 **“主题A-关系类型-主题B”** 的格式。
+
+3.  **确定关系类型**：在生成“关系笔记”标题时，你必须从以下四个选项中选择最贴切的一个作为“关系类型”：
+    * **关联**：用于描述两个主题之间存在的一般性联系或相关性。
+    * **对比**：用于描述两个主题之间的异同点。
+    * **影响**：用于描述一个主题如何导致、改变或作用于另一个主题（因果关系）。
+    * **应用**：用于描述一个主题（通常是理论、技术或方法）如何在另一个主题（通常是领域或问题）上被使用。
+
+4.  **格式化输出**：你的最终回答 **必须** 是一个不含任何额外文本的、格式正确的 JSON 对象。该对象应包含两个键：
+    - "title": 你生成的最终标题。
+    - "reasoning": 一句简短的中文解释，说明你为什么会生成这个标题（例如，“笔记核心是探讨A对B的因果作用，因此判定为影响关系。”）。`;
+
 // --- Gemini 调用逻辑 ---
 async function getGeminiSuggestion(content: string, apiKey: string): Promise<TitleSuggestion | null> {
-    const systemPrompt = `你是一个知识管理专家，精通KG笔记法。你的任务是为用户提供的笔记内容生成一个符合规范的标题。
-规范如下: 1. 如果内容是关于单个核心概念，标题就是这个概念的名称。2. 如果内容是描述概念间的互动关系，标题必须遵循 "概念A-关系类型-概念B" 格式。3. 关系类型只能是：影响、对比、关联、应用。4. 你的回答必须是一个 JSON 对象，格式为：{"title": "生成的标题", "reasoning": "你为什么这么命名的简单解释"}。5. 直接输出 JSON 对象，不要包含任何额外的解释或 markdown 格式。`;
-    
     try {
         const response = await requestUrl({
             url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`,
@@ -37,9 +58,6 @@ async function getGeminiSuggestion(content: string, apiKey: string): Promise<Tit
 
 // --- DeepSeek 调用逻辑 ---
 async function getDeepSeekSuggestion(content: string, apiKey: string): Promise<TitleSuggestion | null> {
-    const systemPrompt = `你是一个知识管理专家，精通KG笔记法。你的任务是为用户提供的笔记内容生成一个符合规范的标题。
-规范如下: 1. 如果内容是关于单个核心概念，标题就是这个概念的名称。2. 如果内容是描述概念间的互动关系，标题必须遵循 "概念A-关系类型-概念B" 格式。3. 关系类型只能是：影响、对比、关联、应用。4. 你的回答必须是一个 JSON 对象，格式为：{"title": "生成的标题", "reasoning": "你为什么这么命名的简单解释"}。5. 直接输出 JSON 对象，不要包含任何额外的解释或 markdown 格式。`;
-
     try {
         const response = await requestUrl({
             url: 'https://api.deepseek.com/chat/completions',
@@ -100,20 +118,25 @@ export async function testAIConnection(settings: TWPilotSettings): Promise<boole
     const testContent = "这是一个测试。";
 
     try {
+        let suggestion: TitleSuggestion | null = null;
         if (aiProvider === 'gemini') {
             if (!geminiApiKey) throw new Error('尚未配置 Google Gemini API Key。');
-            await getGeminiSuggestion(testContent, geminiApiKey);
-            return true;
+            suggestion = await getGeminiSuggestion(testContent, geminiApiKey);
         } else if (aiProvider === 'deepseek') {
             if (!deepseekApiKey) throw new Error('尚未配置 DeepSeek API Key。');
-            await getDeepSeekSuggestion(testContent, deepseekApiKey);
-            return true;
+            suggestion = await getDeepSeekSuggestion(testContent, deepseekApiKey);
         } else {
             throw new Error('未知的 AI 服务提供商。');
         }
+        
+        if (suggestion && suggestion.title) {
+            return true;
+        } else {
+            throw new Error("API 返回了无效的或空的建议。");
+        }
     } catch (error) {
+        new Notice(`连接测试失败: ${error.message}`);
         console.error(`ThoughtWeaver Pilot ${aiProvider} Connection Test Error:`, error);
-        // 错误信息已在 Notice 中显示，这里只返回 false
         return false;
     }
 }
