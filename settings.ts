@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import TWPilotPlugin from './main';
 import { DEFAULT_CONCEPT_TEMPLATE_PATH, DEFAULT_RELATION_TEMPLATE_PATH, AIProvider } from './types';
+import { testAIConnection } from './utils/aiService'; // <-- CORRECTED PATH
 
 export class TWPilotSettingTab extends PluginSettingTab {
     plugin: TWPilotPlugin;
@@ -155,15 +156,17 @@ export class TWPilotSettingTab extends PluginSettingTab {
         new Setting(relationLinkConfigContainer)
             .setDesc(descFragment);
 
-        const relationTypes = {
-            '影响': { headDesc: '影响发起方 (A)', tailDesc: '影响接收方 (B)' },
-            '对比': { headDesc: '对比方 (A)', tailDesc: '对比方 (B)' },
+        const relationTypes: { [key: string]: { headDesc: string; tailDesc: string } } = {
             '关联': { headDesc: '关联方 (A)', tailDesc: '关联方 (B)' },
+            '对比': { headDesc: '对比方 (A)', tailDesc: '对比方 (B)' },
+            '影响': { headDesc: '影响发起方 (A)', tailDesc: '影响接收方 (B)' },
             '应用': { headDesc: '应用技术 (A)', tailDesc: '应用领域 (B)' }
         };
+        
+        const displayOrder = ['关联', '对比', '影响', '应用'];
 
-        for (const type in relationTypes) {
-            const config = relationTypes[type as keyof typeof relationTypes];
+        for (const type of displayOrder) {
+            const config = relationTypes[type];
             new Setting(relationLinkConfigContainer)
                 .setName(`“${type}”关系`)
                 .addText(text => {
@@ -184,7 +187,7 @@ export class TWPilotSettingTab extends PluginSettingTab {
                 });
         }
 
-        // --- AI 功能设置 (已移至末尾) ---
+        // --- AI 功能设置 ---
         containerEl.createEl('h3', { text: 'AI 功能设置' });
 
         new Setting(containerEl)
@@ -198,11 +201,20 @@ export class TWPilotSettingTab extends PluginSettingTab {
                     .onChange(async (value: AIProvider) => {
                         this.plugin.settings.aiProvider = value;
                         await this.plugin.saveSettings();
-                        this.display(); // 重新渲染设置页面以显示对应的 API Key 输入框
+                        this.display(); 
                     });
             });
 
-        // Gemini API Key 设置 (条件显示)
+        const handleTestClick = async (button: any) => {
+            button.setDisabled(true).setButtonText("测试中...");
+            const success = await testAIConnection(this.plugin.settings);
+            if (success) {
+                new Notice("连接成功！API Key 有效。", 5000);
+            }
+            // 失败的 Notice 已经在 testAIConnection 内部处理了
+            button.setDisabled(false).setButtonText("测试连接");
+        };
+
         if (this.plugin.settings.aiProvider === 'gemini') {
             new Setting(containerEl)
                 .setName('Google Gemini API Key')
@@ -215,10 +227,13 @@ export class TWPilotSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     })
                     .inputEl.setAttribute('type', 'password')
+                )
+                .addButton(button => button
+                    .setButtonText("测试连接")
+                    .onClick(() => handleTestClick(button))
                 );
         }
 
-        // DeepSeek API Key 设置 (条件显示)
         if (this.plugin.settings.aiProvider === 'deepseek') {
             new Setting(containerEl)
                 .setName('DeepSeek API Key')
@@ -231,6 +246,10 @@ export class TWPilotSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     })
                     .inputEl.setAttribute('type', 'password')
+                )
+                .addButton(button => button
+                    .setButtonText("测试连接")
+                    .onClick(() => handleTestClick(button))
                 );
         }
     }
@@ -251,13 +270,23 @@ publish: true
 
 # 概述
 
+
+
 # 关联
+
+
 
 # 对比
 
+
+
 # 影响因素
 
+
+
 # 影响
+
+
 
 # 应用
 `;
@@ -282,3 +311,4 @@ publish: true
         }
     }
 }
+

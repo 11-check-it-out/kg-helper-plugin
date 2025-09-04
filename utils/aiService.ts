@@ -91,3 +91,30 @@ export async function suggestTitleWithAI(content: string, settings: TWPilotSetti
         return null;
     }
 }
+
+/**
+ * 【新】测试 AI API 连接和密钥有效性
+ */
+export async function testAIConnection(settings: TWPilotSettings): Promise<boolean> {
+    const { aiProvider, geminiApiKey, deepseekApiKey } = settings;
+    const testContent = "这是一个测试。";
+
+    try {
+        if (aiProvider === 'gemini') {
+            if (!geminiApiKey) throw new Error('尚未配置 Google Gemini API Key。');
+            await getGeminiSuggestion(testContent, geminiApiKey);
+            return true;
+        } else if (aiProvider === 'deepseek') {
+            if (!deepseekApiKey) throw new Error('尚未配置 DeepSeek API Key。');
+            await getDeepSeekSuggestion(testContent, deepseekApiKey);
+            return true;
+        } else {
+            throw new Error('未知的 AI 服务提供商。');
+        }
+    } catch (error) {
+        console.error(`ThoughtWeaver Pilot ${aiProvider} Connection Test Error:`, error);
+        // 错误信息已在 Notice 中显示，这里只返回 false
+        return false;
+    }
+}
+
