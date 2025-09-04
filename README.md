@@ -1,6 +1,6 @@
-# KG Helper for Obsidian
+# ThoughtWeaver Pilot for Obsidian
 
-**KG Helper** 是一款旨在将 [KG 笔记法](https://publish.obsidian.md/ryooo/G_%E6%96%87%E5%8C%96%E3%80%81%E7%A7%91%E5%AD%A6%E3%80%81%E6%95%99%E8%82%B2%E3%80%81%E4%BD%93%E8%82%B2/KG%E7%AC%94%E8%AE%B0%E6%B3%95%E5%85%A5%E9%97%A8%E6%95%99%E7%A8%8B)（知识图谱笔记法）的理念无缝融入 Obsidian 工作流的辅助插件。它通过提供一系列智能命令和快捷操作，帮助您专注于知识的连接与构建，而非繁琐的笔记维护。
+**ThoughtWeaver Pilot** 是一款旨在将 [KG 笔记法](https://publish.obsidian.md/ryooo/G_%E6%96%87%E5%8C%96%E3%80%81%E7%A7%91%E5%AD%A6%E3%80%81%E6%95%99%E8%82%B2%E3%80%81%E4%BD%93%E8%82%B2/KG%E7%AC%94%E8%AE%B0%E6%B3%95%E5%85%A5%E9%97%A8%E6%95%99%E7%A8%8B)（知识图谱笔记法）的理念无缝融入 Obsidian 工作流的辅助插件。它通过提供一系列智能命令和快捷操作，帮助您专注于知识的连接与构建，而非繁琐的笔记维护。
 
 ## 核心理念
 

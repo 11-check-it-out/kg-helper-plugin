@@ -1,6 +1,6 @@
 {
-	"id": "kg-helper",
-	"name": "KG Helper",
+	"id": "thoughtweaver-pilot",
+	"name": "ThoughtWeaver Pilot",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "一个根据KG笔记法，辅助创建和链接概念笔记与关系笔记的插件。",
