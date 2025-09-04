@@ -1,10 +1,7 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import TWPilotPlugin from './main';
-import { DEFAULT_CONCEPT_TEMPLATE_PATH, DEFAULT_RELATION_TEMPLATE_PATH } from './types';
+import { DEFAULT_CONCEPT_TEMPLATE_PATH, DEFAULT_RELATION_TEMPLATE_PATH, AIProvider } from './types';
 
-/**
- * 插件的设置页面类
- */
 export class TWPilotSettingTab extends PluginSettingTab {
     plugin: TWPilotPlugin;
 
@@ -159,9 +156,9 @@ export class TWPilotSettingTab extends PluginSettingTab {
             .setDesc(descFragment);
 
         const relationTypes = {
-            '关联': { headDesc: '关联方 (A)', tailDesc: '关联方 (B)' },
-            '对比': { headDesc: '对比方 (A)', tailDesc: '对比方 (B)' },
             '影响': { headDesc: '影响发起方 (A)', tailDesc: '影响接收方 (B)' },
+            '对比': { headDesc: '对比方 (A)', tailDesc: '对比方 (B)' },
+            '关联': { headDesc: '关联方 (A)', tailDesc: '关联方 (B)' },
             '应用': { headDesc: '应用技术 (A)', tailDesc: '应用领域 (B)' }
         };
 
@@ -186,18 +183,64 @@ export class TWPilotSettingTab extends PluginSettingTab {
                         });
                 });
         }
+
+        // --- AI 功能设置 (已移至末尾) ---
+        containerEl.createEl('h3', { text: 'AI 功能设置' });
+
+        new Setting(containerEl)
+            .setName('AI 服务提供商')
+            .setDesc('选择用于“AI建议标题”功能的语言模型服务。')
+            .addDropdown(dropdown => {
+                dropdown
+                    .addOption('gemini', 'Google Gemini')
+                    .addOption('deepseek', 'DeepSeek')
+                    .setValue(this.plugin.settings.aiProvider)
+                    .onChange(async (value: AIProvider) => {
+                        this.plugin.settings.aiProvider = value;
+                        await this.plugin.saveSettings();
+                        this.display(); // 重新渲染设置页面以显示对应的 API Key 输入框
+                    });
+            });
+
+        // Gemini API Key 设置 (条件显示)
+        if (this.plugin.settings.aiProvider === 'gemini') {
+            new Setting(containerEl)
+                .setName('Google Gemini API Key')
+                .setDesc('在此处输入您的 Google AI Gemini API Key。')
+                .addText(text => text
+                    .setPlaceholder('请输入 Gemini API Key')
+                    .setValue(this.plugin.settings.geminiApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.geminiApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.setAttribute('type', 'password')
+                );
+        }
+
+        // DeepSeek API Key 设置 (条件显示)
+        if (this.plugin.settings.aiProvider === 'deepseek') {
+            new Setting(containerEl)
+                .setName('DeepSeek API Key')
+                .setDesc('在此处输入您的 DeepSeek API Key。')
+                .addText(text => text
+                    .setPlaceholder('请输入 DeepSeek API Key')
+                    .setValue(this.plugin.settings.deepseekApiKey)
+                    .onChange(async (value) => {
+                        this.plugin.settings.deepseekApiKey = value;
+                        await this.plugin.saveSettings();
+                    })
+                    .inputEl.setAttribute('type', 'password')
+                );
+        }
     }
 
-    /**
-     * 【更新】统一创建默认模板的逻辑
-     */
     async createDefaultTemplate(noteType: 'concept' | 'relation') {
         const path = noteType === 'concept' ? DEFAULT_CONCEPT_TEMPLATE_PATH : DEFAULT_RELATION_TEMPLATE_PATH;
         const settingKey = noteType === 'concept' ? 'conceptTemplatePath' : 'relationTemplatePath';
         
         try {
             const parentKey = this.plugin.settings.parentKey.trim() || 'parent';
-            // 统一的模板内容, 仅 type 字段动态变化
             const templateContent = `---
 uid: 
 aliases: []
@@ -208,23 +251,13 @@ publish: true
 
 # 概述
 
-
-
 # 关联
-
-
 
 # 对比
 
-
-
 # 影响因素
 
-
-
 # 影响
-
-
 
 # 应用
 `;
@@ -240,7 +273,7 @@ publish: true
             await this.app.vault.create(path, templateContent);
             this.plugin.settings[settingKey] = path;
             await this.plugin.saveSettings();
-            this.display(); // 刷新设置页面以显示新路径
+            this.display();
             const noteTypeName = noteType === 'concept' ? '概念' : '关系';
             new Notice(`默认${noteTypeName}模板已成功创建于 ${path}`);
         } catch (e) {
@@ -249,4 +282,3 @@ publish: true
         }
     }
 }
-
